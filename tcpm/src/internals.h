@@ -19,18 +19,8 @@
 #include <stdint.h>
 #include <pthread.h>
 
-typedef enum {
-    PCT_STOP,
-    PCT_CONTINUE,
-    PCT_WAIT_MESSAGE,
-} ProcessContinuationType;
 
-typedef struct ProcessContinuation ProcessContinuation;
-typedef ProcessContinuation (*ProcessHandler)(DispatcherQueue*, void* localState, void* msg);
 
-struct ProcessContinuation {
-    ProcessContinuationType     ty;
-    void*                       localState;
-    ProcessHandler              handler;
-};
+
+
 
