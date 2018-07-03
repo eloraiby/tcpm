@@ -20,8 +20,14 @@
 */
 
 #include <stdbool.h>
-#include <pthread.h>
+#include <stdatomic.h>
 #include <tcpm.h>
+
+#define __USE_GNU
+#include <pthread.h>
+
+typedef _Atomic uint32_t atomic_uint32_t;
+typedef _Atomic uint64_t atomic_uint64_t;
 
 ////////////////////////////////////////////////////////////////////////////////
 // Lock-free bounded queue
@@ -32,15 +38,15 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 typedef struct {
-    uint64_t    seq;
-    void*       data;
+    atomic_uint64_t     seq;
+    void*               data;
 } Element;
 
 typedef void            (*ElementRelease)   (void* message);
 
 typedef struct {
-    uint32_t            first;
-    uint32_t            last;
+    atomic_uint32_t     first;
+    atomic_uint32_t     last;
     uint32_t            cap;
     Element*            elements;
     ElementRelease      elementRelease;
@@ -50,5 +56,43 @@ BoundedQueue*   BoundedQueue_init   (BoundedQueue* bq, uint32_t cap, ElementRele
 void            BoundedQueue_release(BoundedQueue* bq);
 bool            BoundedQueue_push   (BoundedQueue* bq, void* data);
 void*           BoundedQueue_pop    (BoundedQueue* bq); // up to the receiver to free the message
+
+////////////////////////////////////////////////////////////////////////////////
+// Process Management
+////////////////////////////////////////////////////////////////////////////////
+
+
+typedef enum {
+    PS_STARTING,        // started actors need to be run at least once
+    PS_RUNNING,
+    PS_WAITING,         // waiting on a message
+    PS_STOPPED,
+} ProcessRunningState;
+
+struct Process {
+    void*               state;
+    uint32_t            maxMessagePerCycle;
+    BoundedQueue        messageQueue;
+    ProcessRunningState runningState;
+    ProcessHandler      handler;
+    ProcessReleaseState releaseState;
+    DispatcherQueue*    dispatcherQueue;
+    Process*            parent;
+};
+
+typedef enum {
+    DQS_RUNNING,
+    DQS_STOPPED,
+} DispatcherQueueState;
+
+struct DispatcherQueue {
+    BoundedQueue        processQueue;
+    uint32_t            threadCount;
+    pthread_t*          threads;
+    uint32_t            processCap;
+    DispatcherQueueState    state;
+    atomic_uint32_t     procCount;
+    pthread_key_t       currentProcess;   // (TLS) per thread, current running process
+};
 
 #endif

@@ -25,12 +25,11 @@ typedef enum {
     PCT_STOP,
     PCT_CONTINUE,
     PCT_WAIT_MESSAGE,
-} ProcessContinuationType;
+} ProcessContinuation;
 
 typedef struct Process              Process;
 typedef struct DispatcherQueue      DispatcherQueue;
-typedef struct ProcessContinuation  ProcessContinuation;
-typedef ProcessContinuation         (*ProcessHandler)(DispatcherQueue*, void* localState);
+typedef ProcessContinuation         (*ProcessHandler)       (DispatcherQueue*, void* localState, void* msg);
 typedef void                        (*ProcessReleaseState)  (void* state);
 typedef void                        (*MessageRelease)       (void* message);
 
@@ -38,12 +37,6 @@ typedef enum {
     SEND_FAIL       = 0,
     SEND_SUCCESS    = 1,
 } SendResult;
-
-struct ProcessContinuation {
-    ProcessContinuationType         ty;
-    void*                           localState;
-    ProcessHandler                  handler;
-};
 
 typedef struct {
     void*           initialState;
@@ -58,11 +51,11 @@ typedef struct {
 // API
 ////////////////////////////////////////////////////////////////////////////////
 Process*            Process_parent          (Process* proc);
-DispatcherQueue*    DispatchQueue_init      (uint32_t procCap, uint32_t threadCount);
-void                DispatchQueue_release   (DispatcherQueue* dq);
+DispatcherQueue*    DispatcherQueue_init    (uint32_t procCap, uint32_t threadCount);
+void                DispatcherQueue_release (DispatcherQueue* dq);
 SendResult          Process_sendMessage     (Process* dest, void* message);
 void*               Process_receiveMessage  (DispatcherQueue* dq);
 Process*            Process_self            (DispatcherQueue* dq);
-Process*            DispatchQueue_spawn     (DispatcherQueue* dq, ProcessSpawnParameters* parameters);
+Process*            DispatcherQueue_spawn   (DispatcherQueue* dq, ProcessSpawnParameters* parameters);
 
 #endif
