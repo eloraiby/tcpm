@@ -64,4 +64,5 @@ SendResult          Process_sendMessage     (Process* dest, void* message);
 void*               Process_receiveMessage  (DispatcherQueue* dq);
 Process*            Process_self            (DispatcherQueue* dq);
 Process*            DispatchQueue_spawn     (DispatcherQueue* dq, ProcessSpawnParameters* parameters);
+
 #endif
