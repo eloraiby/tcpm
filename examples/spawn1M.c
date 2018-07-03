@@ -91,5 +91,5 @@ main() {
     DispatcherQueue_release(dq);
     fprintf(stderr, "sum: %u - %u actors executed and finished in %.15f seconds\n", sum, MAX_ACTOR_COUNT, diff.tv_sec + (double) diff.tv_nsec / 1000000000L);
 
-	return 0;
+    return 0;
 }
