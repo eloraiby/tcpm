@@ -19,6 +19,8 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+#include <stdint.h>
+
 typedef enum {
     PCT_STOP,
     PCT_CONTINUE,
@@ -28,7 +30,7 @@ typedef enum {
 typedef struct Process              Process;
 typedef struct DispatcherQueue      DispatcherQueue;
 typedef struct ProcessContinuation  ProcessContinuation;
-typedef ProcessContinuation         (*ProcessHandler)(DispatcherQueue*, void* localState, void* msg);
+typedef ProcessContinuation         (*ProcessHandler)(DispatcherQueue*, void* localState);
 typedef void			            (*ProcessReleaseState)	(void* state);
 typedef void                        (*MessageRelease)       (void* message);
 
@@ -47,7 +49,7 @@ typedef struct {
     void*           initialState;
     uint32_t        maxMessagePerCycle;
     uint32_t        messageCap;
-    ProcessMessageHandler   handler;
+    ProcessHandler  handler;
     ProcessReleaseState     releaseState;
     MessageRelease  messageRelease;
 } ProcessSpawnParameters;
@@ -56,9 +58,10 @@ typedef struct {
 // API
 ////////////////////////////////////////////////////////////////////////////////
 Process*            Process_parent          (Process* proc);
-DispatchQueue*      DispatchQueue_init      (uint32_t procCap, uint32_t threadCount);
+DispatcherQueue*    DispatchQueue_init      (uint32_t procCap, uint32_t threadCount);
 void                DispatchQueue_release   (DispatcherQueue* dq);
 SendResult		    Process_sendMessage     (Process* dest, void* message);
+void*               Process_receiveMessage  (DispatcherQueue* dq);
 Process*            Process_self            (DispatcherQueue* dq);
 Process*            DispatchQueue_spawn     (DispatcherQueue* dq, ProcessSpawnParameters* parameters);
 #endif

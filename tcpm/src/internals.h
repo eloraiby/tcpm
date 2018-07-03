@@ -1,3 +1,6 @@
+#ifndef __INTERNALS__H__
+#define __INTERNALS__H__
+
 /*
     Tiny Cooperative Process Management library
     Copyright (C) 2018  Wael El Oraiby
@@ -16,11 +19,36 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include <stdint.h>
+#include <stdbool.h>
 #include <pthread.h>
+#include <tcpm.h>
 
+////////////////////////////////////////////////////////////////////////////////
+// Lock-free bounded queue
+//
+// This lock-free data structure is lock-free in the sense, it garanties
+// that at least either of the producers or the consumers can continue their
+// work while the other one is pushing/poping
+////////////////////////////////////////////////////////////////////////////////
 
+typedef struct {
+    uint64_t    seq;
+    void*       data;
+} Element;
 
+typedef void            (*ElementRelease)   (void* message);
 
+typedef struct {
+    uint32_t			first;
+    uint32_t			last;
+    uint32_t			cap;
+    Element*			elements;
+    ElementRelease      elementRelease;
+} BoundedQueue;
 
+BoundedQueue*   BoundedQueue_init	(BoundedQueue* bq, uint32_t cap, ElementRelease elementRelease);
+void            BoundedQueue_release(BoundedQueue* bq);
+bool            BoundedQueue_push	(BoundedQueue* bq, void* data);
+void*			BoundedQueue_pop	(BoundedQueue* bq);	// up to the receiver to free the message
 
+#endif
