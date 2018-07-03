@@ -31,7 +31,7 @@ typedef struct Process              Process;
 typedef struct DispatcherQueue      DispatcherQueue;
 typedef struct ProcessContinuation  ProcessContinuation;
 typedef ProcessContinuation         (*ProcessHandler)(DispatcherQueue*, void* localState);
-typedef void			            (*ProcessReleaseState)	(void* state);
+typedef void                        (*ProcessReleaseState)  (void* state);
 typedef void                        (*MessageRelease)       (void* message);
 
 typedef enum {
@@ -60,7 +60,7 @@ typedef struct {
 Process*            Process_parent          (Process* proc);
 DispatcherQueue*    DispatchQueue_init      (uint32_t procCap, uint32_t threadCount);
 void                DispatchQueue_release   (DispatcherQueue* dq);
-SendResult		    Process_sendMessage     (Process* dest, void* message);
+SendResult          Process_sendMessage     (Process* dest, void* message);
 void*               Process_receiveMessage  (DispatcherQueue* dq);
 Process*            Process_self            (DispatcherQueue* dq);
 Process*            DispatchQueue_spawn     (DispatcherQueue* dq, ProcessSpawnParameters* parameters);

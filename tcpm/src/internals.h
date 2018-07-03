@@ -39,16 +39,16 @@ typedef struct {
 typedef void            (*ElementRelease)   (void* message);
 
 typedef struct {
-    uint32_t			first;
-    uint32_t			last;
-    uint32_t			cap;
-    Element*			elements;
+    uint32_t            first;
+    uint32_t            last;
+    uint32_t            cap;
+    Element*            elements;
     ElementRelease      elementRelease;
 } BoundedQueue;
 
-BoundedQueue*   BoundedQueue_init	(BoundedQueue* bq, uint32_t cap, ElementRelease elementRelease);
+BoundedQueue*   BoundedQueue_init   (BoundedQueue* bq, uint32_t cap, ElementRelease elementRelease);
 void            BoundedQueue_release(BoundedQueue* bq);
-bool            BoundedQueue_push	(BoundedQueue* bq, void* data);
-void*			BoundedQueue_pop	(BoundedQueue* bq);	// up to the receiver to free the message
+bool            BoundedQueue_push   (BoundedQueue* bq, void* data);
+void*           BoundedQueue_pop    (BoundedQueue* bq); // up to the receiver to free the message
 
 #endif

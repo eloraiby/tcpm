@@ -33,7 +33,7 @@
 BoundedQueue*
 BoundedQueue_init(BoundedQueue* bq, uint32_t cap, ElementRelease elementRelease) {
     memset(bq, 0, sizeof(BoundedQueue));
-    bq->elementRelease	= elementRelease;
+    bq->elementRelease  = elementRelease;
     bq->cap             = cap;
     bq->elements        = calloc(cap, sizeof(Element));
     for( uint32_t i = 0; i < cap; ++i ) {
