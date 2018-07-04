@@ -1,3 +1,5 @@
+cmake_minimum_required (VERSION 2.8.11)
+
 add_library(tcpm src/tcpm.c)
 
 set(INC_CSDIR ${CMAKE_CURRENT_SOURCE_DIR})

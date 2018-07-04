@@ -15,7 +15,7 @@
     You should have received a copy of the GNU Affero General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
-
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <memory.h>
@@ -128,12 +128,16 @@ static
 bool
 handleProcess(DispatcherQueue* dq, Process* proc, void* msg) {
     pthread_setspecific(dq->currentProcess, proc); // set the current running actor
+    assert( proc == pthread_getspecific(dq->currentProcess) );
     switch( proc->handler(dq, proc->state, msg) ) {
     case PCT_STOP:
-        proc->runningState = PS_STOPPED;
         processRelease(proc);
         return false;
-    default:
+    case PCT_WAIT_MESSAGE:
+        proc->runningState  = PS_WAITING;
+        return true;
+    case PCT_CONTINUE:
+        proc->runningState  = PS_RUNNING;
         return true;
     }
 }
@@ -152,10 +156,10 @@ threadWorker(void* workerState_) {
             bool        pushActorBack   = true;
             uint32_t    msgCount        = 0;
             while( msgCount < proc->maxMessagePerCycle && pushActorBack ) {
-                if( proc->runningState == PS_STARTING ) {
-                    proc->runningState  = PS_RUNNING;
+                if( proc->runningState == PS_RUNNING ) {
                     pushActorBack       = handleProcess(dq, proc, NULL);
                 } else {
+                    assert( proc->runningState == PS_WAITING );
                     void*   msg         = BoundedQueue_pop(&proc->messageQueue);
                     if( msg ) {
                         pushActorBack   = handleProcess(dq, proc, msg);
@@ -226,6 +230,12 @@ Process_sendMessage(Process* dest, void* message) {
     }
 }
 
+void*
+Process_receiveMessage(DispatcherQueue* dq) {
+    Process*    proc    = (Process*)pthread_getspecific(dq->currentProcess);
+    return BoundedQueue_pop(&proc->messageQueue);
+}
+
 Process*
 Process_self(DispatcherQueue* dq) {
     return (Process*)pthread_getspecific(dq->currentProcess);
@@ -243,7 +253,7 @@ DispatcherQueue_spawn(DispatcherQueue* dq, ProcessSpawnParameters* parameters) {
         proc->handler       = parameters->handler;
         proc->releaseState  = parameters->releaseState;
         proc->state         = parameters->initialState;
-        proc->runningState  = PS_STARTING;
+        proc->runningState  = PS_RUNNING;
         proc->maxMessagePerCycle   = (parameters->messageCap > parameters->maxMessagePerCycle) ? parameters->maxMessagePerCycle :  parameters->messageCap;
         BoundedQueue_init(&proc->messageQueue, parameters->messageCap, parameters->messageRelease);
 

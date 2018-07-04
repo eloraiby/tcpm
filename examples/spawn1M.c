@@ -17,8 +17,11 @@ actorHandler(DispatcherQueue* dq, void* state_, void* msg) {
     if( msg == NULL ) {
         // send a message to self (wakeup)
         Process*    self    = Process_self(dq);
-        Process_sendMessage(self, (void*)-1);
-        return PCT_CONTINUE;
+        if( Process_sendMessage(self, (void*)-1) == SEND_SUCCESS ) {
+            return PCT_WAIT_MESSAGE;
+        } else {
+            return PCT_CONTINUE;
+        }
     } else {
        /* if( *state % 10000 == 0 ) {
             fprintf(stderr, "-> %u <-\n", *state);
@@ -60,7 +63,7 @@ main() {
 
     clock_gettime(CLOCK_MONOTONIC, &start);
     uint32_t        sum = 0;
-    
+
     for( uint32_t a = 0; a < MAX_ACTOR_COUNT; ++a ) {
         Process*    ac  = NULL;
         while( ac == NULL ) {
@@ -73,11 +76,11 @@ main() {
             sp.releaseState     = NULL;
             ac  = DispatcherQueue_spawn(dq, &sp);
         }
-        /*
+/*
         if( (a + 1) % 10000 == 0 ) {
             fprintf(stderr, "spawned %u actors\n", a + 1);
         }
-        */
+*/
     }
 
     while((atomic_load(&sum)) < MAX_ACTOR_COUNT) {

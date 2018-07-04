@@ -63,10 +63,8 @@ void*           BoundedQueue_pop    (BoundedQueue* bq); // up to the receiver to
 
 
 typedef enum {
-    PS_STARTING,        // started actors need to be run at least once
     PS_RUNNING,
     PS_WAITING,         // waiting on a message
-    PS_STOPPED,
 } ProcessRunningState;
 
 struct Process {

@@ -1,5 +1,7 @@
 find_package(Threads REQUIRED)
 
+cmake_minimum_required (VERSION 2.8.11)
+
 if(CMAKE_THREAD_LIBS_INIT)
 
     add_executable(spawn1M spawn1M.c)
