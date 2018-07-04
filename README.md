@@ -6,10 +6,16 @@ since **TCPM** is written in **C**, a lot of garantees that exist in **erlang** 
 * bounded queues instead of unbounded queues (erlang uses ubounded queues)
 * sending message can fail (if the bounded message queue is full)
 * no preemption: we are using C and pthreads under the hood, we have no preemption capabilities by default, and if we want to do that, it would require a lot of lowlevel assembly hacks.
-* it uses **C** (by default safety and productiviy is out of the window - You live in the debugger)
+* it uses **C** (by default, safety and productiviy is out of the window as you, now, officialy live in the debugger)
 
+Use only if and only if (all must be checked):
+1. You have implemented your system in erlang or F#
+2. **AND** you have optimized your system
+3. **AND** you have tried harder to reoptimize your system
+4. **AND** you need more performance
+5. **AND** you know what you are doing.
 
-Use only if you need performance **AND** you know what you are doing. **YOU HAVE BEEN WARNED!!!**
+**YOU HAVE BEEN WARNED!!!**
 
 ## Concepts
 - **Cycle**: Number of messages to be processed when a process lands in the executing worker thread.
