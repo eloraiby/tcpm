@@ -74,21 +74,21 @@ struct Process {
     ProcessRunningState runningState;
     ProcessHandler      handler;
     ProcessReleaseState releaseState;
-    DispatcherQueue*    dispatcherQueue;
+    ProcessQueue*       processQueue;
     Process*            parent;
 };
 
 typedef enum {
     DQS_RUNNING,
     DQS_STOPPED,
-} DispatcherQueueState;
+} ProcessQueueState;
 
-struct DispatcherQueue {
+struct ProcessQueue {
     BoundedQueue        processQueue;
     uint32_t            threadCount;
     pthread_t*          threads;
     uint32_t            processCap;
-    DispatcherQueueState    state;
+    ProcessQueueState    state;
     atomic_uint32_t     procCount;
     pthread_key_t       currentProcess;   // (TLS) per thread, current running process
 };

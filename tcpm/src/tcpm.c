@@ -108,7 +108,7 @@ BoundedQueue_pop(BoundedQueue* bq) {
 
 typedef struct {
     uint32_t            threadId;
-    DispatcherQueue*    queue;
+    ProcessQueue*    queue;
 } WorkerState;
 
 static
@@ -126,7 +126,7 @@ processRelease(void* proc_) {
 
 static
 bool
-handleProcess(DispatcherQueue* dq, Process* proc, void* msg) {
+handleProcess(ProcessQueue* dq, Process* proc, void* msg) {
     pthread_setspecific(dq->currentProcess, proc); // set the current running actor
     assert( proc == pthread_getspecific(dq->currentProcess) );
     switch( proc->handler(dq, proc->state, msg) ) {
@@ -146,7 +146,7 @@ static
 void*
 threadWorker(void* workerState_) {
     WorkerState*        workerState = (WorkerState*)workerState_;
-    DispatcherQueue*    dq          = workerState->queue;
+    ProcessQueue*    dq          = workerState->queue;
 
     while( atomic_load_explicit((atomic_int*)&dq->state, memory_order_acquire) == DQS_RUNNING ) {
         Process*    proc = (Process*)BoundedQueue_pop(&dq->processQueue);
@@ -184,9 +184,9 @@ threadWorker(void* workerState_) {
 }
 
 
-DispatcherQueue*
-DispatcherQueue_init(uint32_t procCap, uint32_t threadCount) {
-    DispatcherQueue*    dq  = (DispatcherQueue*)calloc(1, sizeof(*dq));
+ProcessQueue*
+ProcessQueue_init(uint32_t procCap, uint32_t threadCount) {
+    ProcessQueue*    dq  = (ProcessQueue*)calloc(1, sizeof(*dq));
     dq->processCap  = procCap;
     dq->threadCount = threadCount;
     dq->threads     = (pthread_t*)calloc(threadCount, sizeof(pthread_t));
@@ -208,7 +208,7 @@ DispatcherQueue_init(uint32_t procCap, uint32_t threadCount) {
 }
 
 void
-DispatcherQueue_release(DispatcherQueue* dq) {
+ProcessQueue_release(ProcessQueue* dq) {
     if( atomic_load_explicit((atomic_int*)&dq->state, memory_order_acquire) == DQS_RUNNING ) {
         atomic_store_explicit((atomic_int*)&dq->state, DQS_STOPPED, memory_order_release);
         // wait on the threads to exit
@@ -231,25 +231,25 @@ Process_sendMessage(Process* dest, void* message) {
 }
 
 void*
-Process_receiveMessage(DispatcherQueue* dq) {
+Process_receiveMessage(ProcessQueue* dq) {
     Process*    proc    = (Process*)pthread_getspecific(dq->currentProcess);
     return BoundedQueue_pop(&proc->messageQueue);
 }
 
 Process*
-Process_self(DispatcherQueue* dq) {
+Process_self(ProcessQueue* dq) {
     return (Process*)pthread_getspecific(dq->currentProcess);
 }
 
 Process*
-DispatcherQueue_spawn(DispatcherQueue* dq, ProcessSpawnParameters* parameters) {
+ProcessQueue_spawn(ProcessQueue* dq, ProcessSpawnParameters* parameters) {
     uint32_t    procCount   = atomic_fetch_add((atomic_uint32_t*)&dq->procCount, 1);
     if( procCount < dq->processCap ) {
         Process*    proc    = (Process*)calloc(1, sizeof(Process));
         Process*    parent  = (Process*)pthread_getspecific(dq->currentProcess);
 
         proc->parent        = parent;
-        proc->dispatcherQueue = dq;
+        proc->processQueue  = dq;
         proc->handler       = parameters->handler;
         proc->releaseState  = parameters->releaseState;
         proc->state         = parameters->initialState;

@@ -12,7 +12,7 @@
 #define MAX_ACTOR_COUNT 1000000
 
 ProcessContinuation
-actorHandler(DispatcherQueue* dq, void* state_, void* msg) {
+actorHandler(ProcessQueue* dq, void* state_, void* msg) {
     uint32_t* state   = (uint32_t*)state_;
     if( msg == NULL ) {
         // send a message to self (wakeup)
@@ -57,7 +57,7 @@ timespec_diff(struct timespec end, struct timespec start) {
 int
 main() {
     fprintf(stderr, "spawning 1,000,000 actors\n");
-    DispatcherQueue*  dq  = DispatcherQueue_init(1024, 4);
+    ProcessQueue*  dq  = ProcessQueue_init(1024, 4);
 
     struct timespec start, end;
 
@@ -74,7 +74,7 @@ main() {
             sp.initialState     = (void*)&sum;//state;
             sp.messageRelease   = NULL;
             sp.releaseState     = NULL;
-            ac  = DispatcherQueue_spawn(dq, &sp);
+            ac  = ProcessQueue_spawn(dq, &sp);
         }
 /*
         if( (a + 1) % 10000 == 0 ) {
@@ -91,7 +91,7 @@ main() {
     clock_gettime(CLOCK_MONOTONIC, &end);
     struct timespec diff    = timespec_diff(end, start);
 
-    DispatcherQueue_release(dq);
+    ProcessQueue_release(dq);
     fprintf(stderr, "sum: %u - %u actors executed and finished in %.15f seconds\n", sum, MAX_ACTOR_COUNT, diff.tv_sec + (double) diff.tv_nsec / 1000000000L);
 
     return 0;
