@@ -13,7 +13,7 @@ Use only if and only if (all must be checked):
 1. You have implemented your system in erlang or F#
 2. **AND** you have optimized your system
 3. **AND** you have tried harder to reoptimize your system
-4. **AND** you need more performance
+4. **AND** no further optimization is possible
 5. **AND** you know what you are doing.
 
 **YOU HAVE BEEN WARNED!!!**
@@ -33,9 +33,11 @@ Every process belongs to a dispatcher queue.
 
 * `Process* DispatcherQueue_spawn(DispatcherQueue* dq, ProcessSpawnParameters* parameters)`: spawn a new process on the dispatcher queue with the appropriate parameters. This will return `NULL` if the maximum number of live process is reached. All parameters passed in `parameters` are owned by the dispatcher queue, as such even on creation failure, the dispatcher will release all the associated objects.
 
-```
-Process*            Process_parent          (Process* proc);
-SendResult          Process_sendMessage     (Process* dest, void* message);
-void*               Process_receiveMessage  (DispatcherQueue* dq);
-Process*            Process_self            (DispatcherQueue* dq);
-```
+#### Process
+* `Process* Process_parent(Process* proc)`: get the process parent (could be `NULL` if the process is the root process).
+
+* `SendResult Process_sendMessage(Process* dest, void* message)`: send a message to another process. The destination process owns the message if the send was successfull, otherwise the message is released using the destination process message release function.
+
+`void* Process_receiveMessage(DispatcherQueue* dq)`: receive a message. This could be `NULL` if no message is available. The receiving process has the responsibility to release the message data.
+
+`Process* Process_self(DispatcherQueue* dq)`: return the current process handle (cannot be `NULL`)
