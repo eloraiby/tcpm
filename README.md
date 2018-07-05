@@ -38,6 +38,6 @@ Every process belongs to a dispatcher queue.
 
 * `SendResult Process_sendMessage(Process* dest, void* message)`: send a message to another process. The destination process owns the message if the send was successfull, otherwise the message is released using the destination process message release function.
 
-`void* Process_receiveMessage(DispatcherQueue* dq)`: receive a message. This could be `NULL` if no message is available. The receiving process has the responsibility to release the message data.
+* `void* Process_receiveMessage(DispatcherQueue* dq)`: receive a message. This could be `NULL` if no message is available. The receiving process has the responsibility to release the message data.
 
-`Process* Process_self(DispatcherQueue* dq)`: return the current process handle (cannot be `NULL`)
+* `Process* Process_self(DispatcherQueue* dq)`: return the current process handle (cannot be `NULL`)
