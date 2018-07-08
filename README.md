@@ -22,22 +22,22 @@ Use only if and only if (all must be checked):
 - **Cycle**: Number of messages to be processed when a process lands in the executing worker thread.
 - **Process**: A lightweight thread. A process can yield execution to other threads either using special coded return values. Practically, a process is a re-entrant callback function. To keep the code simple, a process doesn't have any kind of priority. When a process is spawned, the maximum number of messages to process per process cycle must be specified. This is the closest thing to priorities.
 - **Message Box**: Each spawned process has a message box that can accept a limited number of messages. This number is specified when the process is created by its parent process.
-- **Dispatcher Queue**: The structure that holds the processes as they are processed in-order. Worker threads take processes from this queue and consume them. If a process is preempted, it's puhed back into the queue.
+- **Process Queue**: The structure that holds the processes as they are processed in-order. Worker threads take processes from this queue and consume them. If a process is preempted, it's puhed back into the queue.
 
 ## API
-#### DispatcherQueue
+#### ProcessQueue
 Every process belongs to a dispatcher queue.
-* `DispatcherQueue* DispatcherQueue_init(uint32_t procCap, uint32_t threadCount)`: create a new dispatcher queue, with a maximum number of process `procCap` that can be alive at the same time, and the number of process working threads `threadCount`. Ideally, `threadCount` should match the number of logical cores you have on your CPU.
+* `ProcessQueue* ProcessQueue_init(uint32_t procCap, uint32_t threadCount)`: create a new process queue, with a maximum number of process `procCap` that can be alive at the same time, and the number of process working threads `threadCount`. Ideally, `threadCount` should match the number of logical cores you have on your CPU.
 
-* `void DispatcherQueue_release(DispatcherQueue* dq)`: set the termination flags and join the worker threads until they finish.
+* `void ProcessQueue_release(ProcessQueue* dq)`: set the termination flags and join the worker threads until they finish.
 
-* `Process* DispatcherQueue_spawn(DispatcherQueue* dq, ProcessSpawnParameters* parameters)`: spawn a new process on the dispatcher queue with the appropriate parameters. This will return `NULL` if the maximum number of live process is reached. All parameters passed in `parameters` are owned by the dispatcher queue, as such even on creation failure, the dispatcher will release all the associated objects.
+* `Process* ProcessQueue_spawn(ProcessQueue* dq, ProcessSpawnParameters* parameters)`: spawn a new process on the process queue with the appropriate parameters. This will return `NULL` if the maximum number of live process is reached. All parameters passed in `parameters` are owned by the process queue, as such even on creation failure, the processqueue will release all the associated objects.
 
 #### Process
 * `Process* Process_parent(Process* proc)`: get the process parent (could be `NULL` if the process is the root process).
 
 * `SendResult Process_sendMessage(Process* dest, void* message)`: send a message to another process. The destination process owns the message if the send was successfull, otherwise the message is released using the destination process message release function.
 
-* `void* Process_receiveMessage(DispatcherQueue* dq)`: receive a message. This could be `NULL` if no message is available. The receiving process has the responsibility to release the message data.
+* `void* Process_receiveMessage(ProcessQueue* dq)`: receive a message. This could be `NULL` if no message is available. The receiving process has the responsibility to release the message data.
 
-* `Process* Process_self(DispatcherQueue* dq)`: return the current process handle (cannot be `NULL`)
+* `Process* Process_self(ProcessQueue* dq)`: return the current process handle (cannot be `NULL`)
