@@ -68,6 +68,7 @@ typedef enum {
 } ProcessRunningState;
 
 struct Process {
+    uint64_t            id;
     void*               state;
     uint32_t            maxMessagePerCycle;
     BoundedQueue        messageQueue;
@@ -84,13 +85,15 @@ typedef enum {
 } ProcessQueueState;
 
 struct ProcessQueue {
-    BoundedQueue        processQueue;
+    BoundedQueue        runQueue;   // running process queue
+    BoundedQueue        procPool;   // process pool
     uint32_t            threadCount;
     pthread_t*          threads;
     uint32_t            processCap;
     ProcessQueueState    state;
     atomic_uint32_t     procCount;
     pthread_key_t       currentProcess;   // (TLS) per thread, current running process
+    Process*            processes;  // Process array
 };
 
 #endif

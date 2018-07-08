@@ -113,15 +113,16 @@ typedef struct {
 
 static
 void
-processRelease(void* proc_) {
-    Process*    proc    = (Process*)proc_;
+processRelease(ProcessQueue* dq, Process* proc) {
 
     if( proc->releaseState ) {
         proc->releaseState(proc->state);
     }
 
     BoundedQueue_release(&proc->messageQueue);
-    free(proc);
+
+    // push back to the pool
+    BoundedQueue_push(&dq->procPool, proc);
 }
 
 static
@@ -131,7 +132,7 @@ handleProcess(ProcessQueue* dq, Process* proc, void* msg) {
     assert( proc == pthread_getspecific(dq->currentProcess) );
     switch( proc->handler(dq, proc->state, msg) ) {
     case PCT_STOP:
-        processRelease(proc);
+        processRelease(dq, proc);
         return false;
     case PCT_WAIT_MESSAGE:
         proc->runningState  = PS_WAITING;
@@ -149,7 +150,7 @@ threadWorker(void* workerState_) {
     ProcessQueue*    dq          = workerState->queue;
 
     while( atomic_load_explicit((atomic_int*)&dq->state, memory_order_acquire) == DQS_RUNNING ) {
-        Process*    proc = (Process*)BoundedQueue_pop(&dq->processQueue);
+        Process*    proc = (Process*)BoundedQueue_pop(&dq->runQueue);
         if( proc == NULL ) {
             pthread_yield();
         } else {
@@ -170,7 +171,7 @@ threadWorker(void* workerState_) {
                 ++msgCount;
             }
             if( pushActorBack ) {
-                while( BoundedQueue_push(&dq->processQueue, proc) == false ) {
+                while( BoundedQueue_push(&dq->runQueue, proc) == false ) {
                     pthread_yield();
                 }
             } else {
@@ -190,9 +191,17 @@ ProcessQueue_init(uint32_t procCap, uint32_t threadCount) {
     dq->processCap  = procCap;
     dq->threadCount = threadCount;
     dq->threads     = (pthread_t*)calloc(threadCount, sizeof(pthread_t));
-    BoundedQueue_init(&dq->processQueue, procCap, processRelease);
+    BoundedQueue_init(&dq->runQueue, procCap, processRelease);
     pthread_key_create(&dq->currentProcess, NULL);
+    dq->processes   = (Process*)calloc(procCap, sizeof(Process));
     dq->state       = DQS_RUNNING;
+    BoundedQueue_init(&dq->procPool, procCap, NULL);
+
+    for( uint32_t p = 0; p < procCap; ++p ) {
+        dq->processes[p].id = p;
+        BoundedQueue_push(&dq->procPool, &dq->processes[p]);
+    }
+
     atomic_store(&dq->procCount, 0);
     for( uint32_t threadId = 0; threadId < threadCount; ++threadId ) {
         WorkerState*    ws  = (WorkerState*)calloc(1, sizeof(WorkerState));
@@ -217,7 +226,7 @@ ProcessQueue_release(ProcessQueue* dq) {
         }
 
         // now free the actors/messages
-        BoundedQueue_release(&dq->processQueue);
+        BoundedQueue_release(&dq->runQueue);
     }
 }
 
@@ -245,9 +254,15 @@ Process*
 ProcessQueue_spawn(ProcessQueue* dq, ProcessSpawnParameters* parameters) {
     uint32_t    procCount   = atomic_fetch_add((atomic_uint32_t*)&dq->procCount, 1);
     if( procCount < dq->processCap ) {
-        Process*    proc    = (Process*)calloc(1, sizeof(Process));
-        Process*    parent  = (Process*)pthread_getspecific(dq->currentProcess);
+        Process*    proc    = NULL;
 
+        // TODO: contention point
+        while( (proc = (Process*)BoundedQueue_pop(&dq->procPool)) == NULL ) {
+            pthread_yield();
+        }
+
+        Process*    parent  = (Process*)pthread_getspecific(dq->currentProcess);
+        proc->id            = proc->id + dq->processCap;
         proc->parent        = parent;
         proc->processQueue  = dq;
         proc->handler       = parameters->handler;
@@ -257,9 +272,10 @@ ProcessQueue_spawn(ProcessQueue* dq, ProcessSpawnParameters* parameters) {
         proc->maxMessagePerCycle   = (parameters->messageCap > parameters->maxMessagePerCycle) ? parameters->maxMessagePerCycle :  parameters->messageCap;
         BoundedQueue_init(&proc->messageQueue, parameters->messageCap, parameters->messageRelease);
 
-        while( BoundedQueue_push(&dq->processQueue, proc) == false ) {
+        // TODO: contention point
+        while( BoundedQueue_push(&dq->runQueue, proc) == false ) {
             // other threads are hanging before writing the el->seq, yield
-            //pthread_yield();
+            pthread_yield();
         }
 
         return proc;
