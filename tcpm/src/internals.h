@@ -90,7 +90,7 @@ struct ProcessQueue {
     uint32_t            threadCount;
     pthread_t*          threads;
     uint32_t            processCap;
-    ProcessQueueState    state;
+    ProcessQueueState   state;
     atomic_uint32_t     procCount;
     pthread_key_t       currentProcess;   // (TLS) per thread, current running process
     Process*            processes;  // Process array
