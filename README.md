@@ -36,7 +36,7 @@ Every process belongs to a dispatcher queue.
 #### Process
 * `Process* Process_parent(Process* proc)`: get the process parent (could be `NULL` if the process is the root process).
 
-* `SendResult Process_sendMessage(Process* dest, void* message)`: send a message to another process. The destination process owns the message if the send was successfull, otherwise the message is released using the destination process message release function.
+* `SendResult Process_sendMessage(Process* dest, void* message, MessageAction ma)`: send a message to another process. The destination process owns the message if the send was successfull, otherwise if the `MessageAction` is `MA_RELEASE`, the message is released using the destination process message release function.
 
 * `void* Process_receiveMessage(ProcessQueue* dq)`: receive a message. This could be `NULL` if no message is available. The receiving process has the responsibility to release the message data.
 
