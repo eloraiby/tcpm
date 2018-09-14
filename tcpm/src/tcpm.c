@@ -231,10 +231,15 @@ ProcessQueue_release(ProcessQueue* dq) {
 }
 
 SendResult
-Process_sendMessage(Process* dest, void* message) {
+Process_sendMessage(Process* dest, void* message, MessageAction ma) {
     if( BoundedQueue_push(&dest->messageQueue, message) ) {
         return SEND_SUCCESS;
     } else {
+        switch(ma) {
+        case MA_KEEP: break;
+        case MA_REMOVE:
+            dest->messageQueue.elementRelease(message);
+        }
         return SEND_FAIL;
     }
 }

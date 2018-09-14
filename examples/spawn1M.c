@@ -17,7 +17,7 @@ actorHandler(ProcessQueue* dq, void* state_, void* msg) {
     if( msg == NULL ) {
         // send a message to self (wakeup)
         Process*    self    = Process_self(dq);
-        if( Process_sendMessage(self, (void*)-1) == SEND_SUCCESS ) {
+        if( Process_sendMessage(self, (void*)-1, MA_KEEP) == SEND_SUCCESS ) {
             return PCT_WAIT_MESSAGE;
         } else {
             return PCT_CONTINUE;

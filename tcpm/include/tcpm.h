@@ -38,6 +38,12 @@ typedef enum {
     SEND_SUCCESS    = 1,
 } SendResult;
 
+// on send failure, what to do ?
+typedef enum {
+    MA_KEEP,
+    MA_REMOVE,
+} MessageAction;
+
 typedef struct {
     void*           initialState;
     uint32_t        maxMessagePerCycle;
@@ -53,7 +59,7 @@ typedef struct {
 Process*            Process_parent          (Process* proc);
 ProcessQueue*       ProcessQueue_init       (uint32_t procCap, uint32_t threadCount);
 void                ProcessQueue_release    (ProcessQueue* dq);
-SendResult          Process_sendMessage     (Process* dest, void* message);
+SendResult          Process_sendMessage     (Process* dest, void* message, MessageAction ma);
 void*               Process_receiveMessage  (ProcessQueue* dq);
 Process*            Process_self            (ProcessQueue* dq);
 Process*            ProcessQueue_spawn      (ProcessQueue* dq, ProcessSpawnParameters* parameters);
