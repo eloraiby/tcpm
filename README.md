@@ -1,12 +1,13 @@
 # tcpm
 Tiny Cooperative Process Management Library (C11), using **lockfree** bounded message queues and green/lightweight processes.
+This was done as an experimentation of an actor system using **Bounded** message queues.
 
 ### WARNING
 since **TCPM** is written in **C**, a lot of garantees that exist in **erlang** vanish! The semantics are also different and require more head scratching, namely:
 * bounded queues instead of unbounded queues (erlang uses ubounded queues)
 * sending a message can fail (if the bounded message queue is full)
 * no preemption: we are using C and pthreads under the hood, we have no preemption capabilities by default, and if we want to do that, it would require a lot of lowlevel assembly hacks.
-* ~managing processes lifetime becomes tricky due to the lack of garbage collection: especially when other processes hold references~ (This was fixed using PID, at an expense of spinlock. sending a message returns `ACTOR_IS_DEAD`, if the actor is dead)
+* ~managing processes lifetime becomes tricky due to the lack of garbage collection: especially when other processes hold references~ (This was fixed using PID, at the expense of using a spinlock. Sending a message returns `ACTOR_IS_DEAD`, if the actor is dead)
 * it uses **C** (by default, safety and productiviy is out of the window as you, now, officialy live in the debugger)
 
 Use only if and only if (all must be checked):
