@@ -326,9 +326,9 @@ Process_self(ProcessQueue* dq) {
 }
 
 PID
-Process_parent(PID proc) {
-    Process* proc   = (Process*)pthread_getspecific(dq->currentProcess);
-    return (PID){ .pq = dq, .id = proc->parent->id, .gen = proc->parent->gen };
+Process_parent(PID pid) {
+    Process* proc   = &pid.pq->processes[pid.id];
+    return (PID){ .pq = pid.pq, .id = proc->parent->id, .gen = proc->parent->gen };
 }
 
 
