@@ -36,7 +36,7 @@ Every process belongs to a dispatcher queue.
 #### Process
 * `PID Process_parent(PID proc)`: get the process parent (`PID.pq` could be `NULL` if the process is the root process).
 
-* `SendResult Process_sendMessage(Process* dest, void* message, MessageAction ma)`: send a message to another process. The destination process owns the message if the send was successfull, otherwise if the `MessageAction` is `MA_RELEASE`, the message is released using the destination process message release function. If the destination actor is dead, then this function returns `ACTOR_IS_DEAD`.
+* `SendResult Process_sendMessage(PID dest, void* message, MessageAction ma)`: send a message to another process. The destination process owns the message if the send was successfull, otherwise if the `MessageAction` is `MA_RELEASE`, the message is released using the destination process message release function. If the destination actor is dead, then this function returns `ACTOR_IS_DEAD`.
 
 * `void* Process_receiveMessage(ProcessQueue* dq)`: receive a message. This could be `NULL` if no message is available. The receiving process has the responsibility to release the message data.
 
