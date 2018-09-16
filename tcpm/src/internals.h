@@ -42,7 +42,7 @@ typedef struct {
     void*               data;
 } Element;
 
-typedef void            (*ElementRelease)   (void* message);
+typedef void            (*ElementRelease)   (void* element);
 
 typedef struct {
     atomic_uint32_t     first;
@@ -61,6 +61,7 @@ void*           BoundedQueue_pop    (BoundedQueue* bq); // up to the receiver to
 // Process Management
 ////////////////////////////////////////////////////////////////////////////////
 
+typedef struct Process              Process;
 
 typedef enum {
     PS_RUNNING,
@@ -68,7 +69,9 @@ typedef enum {
 } ProcessRunningState;
 
 struct Process {
-    uint64_t            id;
+    atomic_bool         releaseLock;
+    uint64_t            id;                 // index
+    atomic_uint64_t     gen;                // generation
     void*               state;
     uint32_t            maxMessagePerCycle;
     BoundedQueue        messageQueue;

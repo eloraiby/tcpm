@@ -24,6 +24,32 @@
 
 ////////////////////////////////////////////////////////////////////////////////
 //
+//         spinlock
+//
+////////////////////////////////////////////////////////////////////////////////
+static inline
+void
+spinLock(atomic_bool* lock) {
+    bool expected   = false;
+    while( !atomic_compare_exchange_weak(lock, &expected, true) );
+}
+
+static inline
+void
+spinUnlock(atomic_bool* lock) {
+    bool expected   = true;
+    while( !atomic_compare_exchange_weak(lock, &expected, false) );
+}
+
+static inline
+bool
+spinTryLock(atomic_bool* lock) {
+    bool expected   = false;
+    return atomic_compare_exchange_weak(lock, &expected, true);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//
 //         Lock-free Bounded Queue (heavily inspired from 1024cores.net)
 //
 ////////////////////////////////////////////////////////////////////////////////
@@ -52,6 +78,7 @@ BoundedQueue_release(BoundedQueue* bq) {
         }
     }
     free(bq->elements);
+    bq->elements    = NULL;
 }
 
 bool
@@ -82,7 +109,8 @@ BoundedQueue_pop(BoundedQueue* bq) {
     Element*    el      = NULL;
     void*       data    = NULL;
     uint32_t    first   = atomic_load_explicit(&bq->first, memory_order_acquire);
-    while(true) {
+
+    while( true ) {
         el  = &bq->elements[first % bq->cap];
         uint32_t seq  = atomic_load_explicit(&el->seq, memory_order_acquire);
         int32_t diff  = (int32_t)(seq) - (int32_t)((first + 1));
@@ -113,7 +141,9 @@ typedef struct {
 
 static
 void
-processRelease(ProcessQueue* dq, Process* proc) {
+processRelease(Process* proc) {
+    spinLock(&proc->releaseLock);
+    atomic_fetch_add(&proc->gen, 1);
 
     if( proc->releaseState ) {
         proc->releaseState(proc->state);
@@ -122,7 +152,8 @@ processRelease(ProcessQueue* dq, Process* proc) {
     BoundedQueue_release(&proc->messageQueue);
 
     // push back to the pool
-    BoundedQueue_push(&dq->procPool, proc);
+    BoundedQueue_push(&proc->processQueue->procPool, proc);
+    spinUnlock(&proc->releaseLock);
 }
 
 static
@@ -132,7 +163,7 @@ handleProcess(ProcessQueue* dq, Process* proc, void* msg) {
     assert( proc == pthread_getspecific(dq->currentProcess) );
     switch( proc->handler(dq, proc->state, msg) ) {
     case PCT_STOP:
-        processRelease(dq, proc);
+        processRelease(proc);
         return false;
     case PCT_WAIT_MESSAGE:
         proc->runningState  = PS_WAITING;
@@ -146,7 +177,7 @@ handleProcess(ProcessQueue* dq, Process* proc, void* msg) {
 static
 void*
 threadWorker(void* workerState_) {
-    WorkerState*        workerState = (WorkerState*)workerState_;
+    WorkerState*     workerState = (WorkerState*)workerState_;
     ProcessQueue*    dq          = workerState->queue;
 
     while( atomic_load_explicit((atomic_int*)&dq->state, memory_order_acquire) == DQS_RUNNING ) {
@@ -174,7 +205,7 @@ threadWorker(void* workerState_) {
                 while( BoundedQueue_push(&dq->runQueue, proc) == false ) {
                     pthread_yield();
                 }
-            } else {
+            } else {    // actor died
                 atomic_fetch_sub(&dq->procCount, 1);
             }
         }
@@ -191,7 +222,7 @@ ProcessQueue_init(uint32_t procCap, uint32_t threadCount) {
     dq->processCap  = procCap;
     dq->threadCount = threadCount;
     dq->threads     = (pthread_t*)calloc(threadCount, sizeof(pthread_t));
-    BoundedQueue_init(&dq->runQueue, procCap, processRelease);
+    BoundedQueue_init(&dq->runQueue, procCap, (ElementRelease)processRelease);
     pthread_key_create(&dq->currentProcess, NULL);
     dq->processes   = (Process*)calloc(procCap, sizeof(Process));
     dq->state       = DQS_RUNNING;
@@ -199,6 +230,7 @@ ProcessQueue_init(uint32_t procCap, uint32_t threadCount) {
 
     for( uint32_t p = 0; p < procCap; ++p ) {
         dq->processes[p].id = p;
+        atomic_store_explicit(&dq->processes[p].gen, 0, memory_order_release);
         BoundedQueue_push(&dq->procPool, &dq->processes[p]);
     }
 
@@ -231,15 +263,45 @@ ProcessQueue_release(ProcessQueue* dq) {
 }
 
 SendResult
-Process_sendMessage(Process* dest, void* message, MessageAction ma) {
-    if( BoundedQueue_push(&dest->messageQueue, message) ) {
-        return SEND_SUCCESS;
-    } else {
-        switch(ma) {
-        case MA_KEEP: break;
-        case MA_REMOVE:
-            dest->messageQueue.elementRelease(message);
+Process_sendMessage(PID dest, void* message, MessageAction ma) {
+    ProcessQueue*   destPQ      = dest.pq;
+    Process*        destProc    = &destPQ->processes[dest.id];
+
+    // We have to handle nasty situations here:
+    //
+    // 1. we are trying to write while the process is dying:
+    //    X = genId
+    //    actor dies
+    //    push message
+    //    actor revived
+    //    new actor consumes wrong message
+    //    send returns SUCCESS
+    //
+    // 2. we are trying to write while the process is dying:
+    //    X = genId
+    //    actor dies
+    //    push message
+    //    send returns SUCCESS, but message never processed (lesser evil)
+    //
+    // we need a release lock (until another better method is found)
+    if( spinTryLock(&destProc->releaseLock) ) {
+        if( dest.gen != destProc->gen ) {
+            spinUnlock(&destProc->releaseLock);
+            return ACTOR_IS_DEAD;
         }
+
+        if( BoundedQueue_push(&destProc->messageQueue, message) ) {
+            return SEND_SUCCESS;
+        } else {
+            switch(ma) {
+            case MA_KEEP: break;
+            case MA_REMOVE:
+                destProc->messageQueue.elementRelease(message);
+            }
+            return SEND_FAIL;
+        }
+        spinUnlock(&destProc->releaseLock);
+    } else {
         return SEND_FAIL;
     }
 }
@@ -250,14 +312,22 @@ Process_receiveMessage(ProcessQueue* dq) {
     return BoundedQueue_pop(&proc->messageQueue);
 }
 
-Process*
+PID
 Process_self(ProcessQueue* dq) {
-    return (Process*)pthread_getspecific(dq->currentProcess);
+    Process* proc   = (Process*)pthread_getspecific(dq->currentProcess);
+    return (PID){ .pq = dq, .id = proc->id, .gen = proc->gen };
 }
 
-Process*
+PID
+Process_parent(PID proc) {
+    Process* proc   = (Process*)pthread_getspecific(dq->currentProcess);
+    return (PID){ .pq = dq, .id = proc->parent->id, .gen = proc->parent->gen };
+}
+
+
+PID
 ProcessQueue_spawn(ProcessQueue* dq, ProcessSpawnParameters* parameters) {
-    uint32_t    procCount   = atomic_fetch_add((atomic_uint32_t*)&dq->procCount, 1);
+    uint32_t    procCount   = atomic_fetch_add(&dq->procCount, 1);
     if( procCount < dq->processCap ) {
         Process*    proc    = NULL;
 
@@ -267,7 +337,7 @@ ProcessQueue_spawn(ProcessQueue* dq, ProcessSpawnParameters* parameters) {
         }
 
         Process*    parent  = (Process*)pthread_getspecific(dq->currentProcess);
-        proc->id            = proc->id + dq->processCap;
+        proc->releaseLock   = false;
         proc->parent        = parent;
         proc->processQueue  = dq;
         proc->handler       = parameters->handler;
@@ -283,12 +353,14 @@ ProcessQueue_spawn(ProcessQueue* dq, ProcessSpawnParameters* parameters) {
             pthread_yield();
         }
 
-        return proc;
+        return (PID){ .pq = dq, .id = proc->id, .gen = proc->gen };
+
     } else {
         atomic_fetch_sub(&dq->procCount, 1);
         if( parameters->releaseState ) {
             parameters->releaseState(parameters->initialState);
         }
-        return NULL;
+
+        return (PID){ .pq = NULL, .id = 0, .gen = 0 };
     }
 }

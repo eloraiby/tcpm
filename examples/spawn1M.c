@@ -16,16 +16,18 @@ actorHandler(ProcessQueue* dq, void* state_, void* msg) {
     uint32_t* state   = (uint32_t*)state_;
     if( msg == NULL ) {
         // send a message to self (wakeup)
-        Process*    self    = Process_self(dq);
+        PID self    = Process_self(dq);
         if( Process_sendMessage(self, (void*)-1, MA_KEEP) == SEND_SUCCESS ) {
             return PCT_WAIT_MESSAGE;
         } else {
             return PCT_CONTINUE;
         }
     } else {
-       /* if( *state % 10000 == 0 ) {
+        /*
+        if( *state % 10000 == 0 ) {
             fprintf(stderr, "-> %u <-\n", *state);
-        } */
+        }
+        */
         atomic_fetch_add(state, 1);
         return PCT_STOP;
     }
@@ -65,8 +67,8 @@ main() {
     uint32_t        sum = 0;
 
     for( uint32_t a = 0; a < MAX_ACTOR_COUNT; ++a ) {
-        Process*    ac  = NULL;
-        while( ac == NULL ) {
+        PID    ac = { 0 };
+        while( ac.pq == NULL ) {
             ProcessSpawnParameters  sp;
             sp.handler          = actorHandler;
             sp.messageCap       = 2;
@@ -76,11 +78,12 @@ main() {
             sp.releaseState     = NULL;
             ac  = ProcessQueue_spawn(dq, &sp);
         }
-/*
+        /*
         if( (a + 1) % 10000 == 0 ) {
             fprintf(stderr, "spawned %u actors\n", a + 1);
         }
-*/
+        */
+
     }
 
     while((atomic_load(&sum)) < MAX_ACTOR_COUNT) {

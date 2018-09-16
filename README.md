@@ -22,7 +22,7 @@ Use only if and only if (all must be checked):
 - **Cycle**: Number of messages to be processed when a process lands in the executing worker thread.
 - **Process**: A lightweight thread. A process can yield execution to other threads either using special coded return values. Practically, a process is a re-entrant callback function. To keep the code simple, a process doesn't have any kind of priority. When a process is spawned, the maximum number of messages to process per process cycle must be specified. This is the closest thing to priorities.
 - **Message Box**: Each spawned process has a message box that can accept a limited number of messages. This number is specified when the process is created by its parent process.
-- **Process Queue**: The structure that holds the processes as they are processed in-order. Worker threads take processes from this queue and consume them. If a process is preempted, it's puhed back into the queue.
+- **Process Queue**: The structure that holds the processes as they are processed in-order. Worker threads take processes from this queue and consume them. If a process is preempted, it's pushed back into the queue.
 
 ## API
 #### ProcessQueue
@@ -31,13 +31,13 @@ Every process belongs to a dispatcher queue.
 
 * `void ProcessQueue_release(ProcessQueue* dq)`: set the termination flags and join the worker threads until they finish.
 
-* `Process* ProcessQueue_spawn(ProcessQueue* dq, ProcessSpawnParameters* parameters)`: spawn a new process on the process queue with the appropriate parameters. This will return `NULL` if the maximum number of live process is reached. All parameters passed in `parameters` are owned by the process queue, as such even on creation failure, the processqueue will release all the associated objects.
+* `PID ProcessQueue_spawn(ProcessQueue* dq, ProcessSpawnParameters* parameters)`: spawn a new process on the process queue with the appropriate parameters. This will return `NULL` if the maximum number of live process is reached. All parameters passed in `parameters` are owned by the process queue, as such even on creation failure, the processqueue will release all the associated objects.
 
 #### Process
-* `Process* Process_parent(Process* proc)`: get the process parent (could be `NULL` if the process is the root process).
+* `PID Process_parent(PID proc)`: get the process parent (`PID.pq` could be `NULL` if the process is the root process).
 
-* `SendResult Process_sendMessage(Process* dest, void* message, MessageAction ma)`: send a message to another process. The destination process owns the message if the send was successfull, otherwise if the `MessageAction` is `MA_RELEASE`, the message is released using the destination process message release function.
+* `SendResult Process_sendMessage(Process* dest, void* message, MessageAction ma)`: send a message to another process. The destination process owns the message if the send was successfull, otherwise if the `MessageAction` is `MA_RELEASE`, the message is released using the destination process message release function. If the destination actor is dead, then this function returns `ACTOR_IS_DEAD`.
 
 * `void* Process_receiveMessage(ProcessQueue* dq)`: receive a message. This could be `NULL` if no message is available. The receiving process has the responsibility to release the message data.
 
-* `Process* Process_self(ProcessQueue* dq)`: return the current process handle (cannot be `NULL`)
+* `PID Process_self(ProcessQueue* dq)`: return the current process handle (`PID.pq` cannot be `NULL`)

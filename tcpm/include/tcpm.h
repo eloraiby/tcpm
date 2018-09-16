@@ -27,13 +27,19 @@ typedef enum {
     PCT_WAIT_MESSAGE,
 } ProcessContinuation;
 
-typedef struct Process              Process;
 typedef struct ProcessQueue         ProcessQueue;
 typedef ProcessContinuation         (*ProcessHandler)       (ProcessQueue*, void* localState, void* msg);
 typedef void                        (*ProcessReleaseState)  (void* state);
 typedef void                        (*MessageRelease)       (void* message);
 
+typedef struct {
+    ProcessQueue*       pq;
+    uint64_t            id;
+    uint64_t            gen;
+} PID;
+
 typedef enum {
+    ACTOR_IS_DEAD   = -1,
     SEND_FAIL       = 0,
     SEND_SUCCESS    = 1,
 } SendResult;
@@ -56,12 +62,11 @@ typedef struct {
 ////////////////////////////////////////////////////////////////////////////////
 // API
 ////////////////////////////////////////////////////////////////////////////////
-Process*            Process_parent          (Process* proc);
 ProcessQueue*       ProcessQueue_init       (uint32_t procCap, uint32_t threadCount);
 void                ProcessQueue_release    (ProcessQueue* dq);
-SendResult          Process_sendMessage     (Process* dest, void* message, MessageAction ma);
+SendResult          Process_sendMessage     (PID dest, void* message, MessageAction ma);
 void*               Process_receiveMessage  (ProcessQueue* dq);
-Process*            Process_self            (ProcessQueue* dq);
-Process*            ProcessQueue_spawn      (ProcessQueue* dq, ProcessSpawnParameters* parameters);
+PID                 Process_self            (ProcessQueue* dq);
+PID                 ProcessQueue_spawn      (ProcessQueue* dq, ProcessSpawnParameters* parameters);
 
 #endif
