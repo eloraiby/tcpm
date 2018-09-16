@@ -11,6 +11,7 @@ since **TCPM** is written in **C**, a lot of garantees that exist in **erlang** 
 * it uses **C** (by default, safety and productiviy is out of the window as you, now, officialy live in the debugger)
 
 Use only if and only if (all must be checked):
+
 0. You are delusional **OR**
 1. You have implemented your system in erlang, pony, scala or F#
 2. **AND** you have optimized your system
