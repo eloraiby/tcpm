@@ -1,5 +1,5 @@
-#ifndef __INTERNALS__H__
-#define __INTERNALS__H__
+#ifndef INTERNALS__H
+#define INTERNALS__H
 
 /*
     Tiny Cooperative Process Management library
@@ -30,7 +30,7 @@
 #include <stdatomic.h>
 #include <tcpm.h>
 
-#define __USE_GNU
+#define _GNU_SOURCE
 #include <pthread.h>
 
 typedef _Atomic uint32_t atomic_uint32_t;
@@ -45,7 +45,7 @@ typedef _Atomic uint64_t atomic_uint64_t;
 ////////////////////////////////////////////////////////////////////////////////
 
 typedef struct {
-    atomic_uint64_t     seq;
+    atomic_uint32_t     seq;
     void*               data;
 } Element;
 

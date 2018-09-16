@@ -1,5 +1,5 @@
-#ifndef __TCPM__H__
-#define __TCPM__H__
+#ifndef TCPM__H
+#define TCPM__H
 
 /*
     Tiny Cooperative Process Management library
