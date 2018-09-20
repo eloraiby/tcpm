@@ -38,14 +38,18 @@ static inline
 void
 spinLock(atomic_bool* lock) {
     bool expected   = false;
-    while( !atomic_compare_exchange_weak(lock, &expected, true) );
+    while( !atomic_compare_exchange_weak(lock, &expected, true) ) {
+        expected    = false;
+    }
 }
 
 static inline
 void
 spinUnlock(atomic_bool* lock) {
     bool expected   = true;
-    while( !atomic_compare_exchange_weak(lock, &expected, false) );
+    while( !atomic_compare_exchange_weak(lock, &expected, false) ) {
+        expected    = true;
+    }
 }
 
 static inline
@@ -298,6 +302,7 @@ Process_sendMessage(PID dest, void* message, MessageAction ma) {
         }
 
         if( BoundedQueue_push(&destProc->messageQueue, message) ) {
+            spinUnlock(&destProc->releaseLock);
             return SEND_SUCCESS;
         } else {
             switch(ma) {
@@ -305,9 +310,9 @@ Process_sendMessage(PID dest, void* message, MessageAction ma) {
             case MA_REMOVE:
                 destProc->messageQueue.elementRelease(message);
             }
+            spinUnlock(&destProc->releaseLock);
             return SEND_FAIL;
         }
-        spinUnlock(&destProc->releaseLock);
     } else {
         return SEND_FAIL;
     }
