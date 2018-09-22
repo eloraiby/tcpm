@@ -37,7 +37,7 @@
 static atomic_uint64_t  _lockId_   = 0;
 
 static inline
-uint32_t
+uint64_t
 nextLock() {
     return atomic_fetch_add(&_lockId_, 1);
 }
@@ -46,19 +46,21 @@ static inline
 void
 spinLock(atomic_uint64_t* lock, uint64_t id) {
     uint64_t expected   = (uint64_t)-1;
-    while( !atomic_compare_exchange_strong(lock, &expected, id) ) {
+    while( !atomic_compare_exchange_weak(lock, &expected, id) ) {
         expected    = (uint64_t)-1;
     }
 }
 
 static inline
 void
-spinUnlock(atomic_uint64_t* lock, uint64_t id) {
+unlock(atomic_uint64_t* lock, uint64_t id) {
     uint64_t expected   = id;
-    assert(id == atomic_load(lock));
-    while( !atomic_compare_exchange_strong(lock, &expected, (uint64_t)-1) ) {
-        expected    = id;
+    uint64_t current    = atomic_load(lock);
+    if( expected != current ) {
+        fprintf(stderr, "current: %llu - expected: %llu\n", current, expected);
+        assert(id == atomic_load(lock));
     }
+    assert(atomic_compare_exchange_strong(lock, &expected, (uint64_t)-1) == true);
 }
 
 static inline
@@ -172,9 +174,11 @@ processRelease(Process* proc) {
 
     BoundedQueue_release(&proc->messageQueue);
 
+    // BugFix: always unlock before pusing back to processQueue
+    unlock(&proc->releaseLock, lockId);
+
     // push back to the pool
     BoundedQueue_push(&proc->processQueue->procPool, proc);
-    spinUnlock(&proc->releaseLock, lockId);
 }
 
 static
@@ -307,13 +311,15 @@ Process_sendMessage(PID dest, void* message, MessageAction ma) {
     //
     // we need a release lock (until another better method is found)
     if( tryLock(&destProc->releaseLock, lockId) ) {
+        uint64_t rId    = atomic_load(&destProc->releaseLock);
+        assert(rId == lockId);
         if( dest.gen != destProc->gen ) {
-            spinUnlock(&destProc->releaseLock, lockId);
+            unlock(&destProc->releaseLock, lockId);
             return ACTOR_IS_DEAD;
         }
 
         if( BoundedQueue_push(&destProc->messageQueue, message) ) {
-            spinUnlock(&destProc->releaseLock, lockId);
+            unlock(&destProc->releaseLock, lockId);
             return SEND_SUCCESS;
         } else {
             switch(ma) {
@@ -321,7 +327,7 @@ Process_sendMessage(PID dest, void* message, MessageAction ma) {
             case MA_REMOVE:
                 destProc->messageQueue.elementRelease(message);
             }
-            spinUnlock(&destProc->releaseLock, lockId);
+            unlock(&destProc->releaseLock, lockId);
             return SEND_FAIL;
         }
     } else {
