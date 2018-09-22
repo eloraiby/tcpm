@@ -76,7 +76,7 @@ typedef enum {
 } ProcessRunningState;
 
 struct Process {
-    atomic_uint64_t     releaseLock;
+    atomic_bool         releaseLock;
     uint64_t            id;                 // index
     atomic_uint64_t     gen;                // generation
     void*               state;

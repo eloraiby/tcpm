@@ -34,40 +34,33 @@
 //         spinlock
 //
 ////////////////////////////////////////////////////////////////////////////////
-static atomic_uint64_t  _lockId_   = 0;
-
-static inline
-uint64_t
-nextLock() {
-    return atomic_fetch_add(&_lockId_, 1);
-}
 
 static inline
 void
-spinLock(atomic_uint64_t* lock, uint64_t id) {
-    uint64_t expected   = (uint64_t)-1;
-    while( !atomic_compare_exchange_weak(lock, &expected, id) ) {
-        expected    = (uint64_t)-1;
+spinLock(atomic_bool* lock) {
+    bool expected   = false;
+    while( !atomic_compare_exchange_weak(lock, &expected, true) ) {
+        expected    = false;
     }
 }
 
 static inline
 void
-unlock(atomic_uint64_t* lock, uint64_t id) {
-    uint64_t expected   = id;
-    uint64_t current    = atomic_load(lock);
+unlock(atomic_bool* lock) {
+    bool expected   = true;
+    bool current    = atomic_load(lock);
     if( expected != current ) {
-        fprintf(stderr, "current: %llu - expected: %llu\n", current, expected);
-        assert(id == atomic_load(lock));
+        fprintf(stderr, "current: %u - expected: %u\n", current, expected);
+        assert(expected == current);
     }
-    assert(atomic_compare_exchange_strong(lock, &expected, (uint64_t)-1) == true);
+    assert(atomic_compare_exchange_strong(lock, &expected, false) == true);
 }
 
 static inline
 bool
-tryLock(atomic_uint64_t* lock, uint64_t id) {
-    uint64_t expected   = (uint64_t)-1;
-    return atomic_compare_exchange_strong(lock, &expected, id);
+tryLock(atomic_bool* lock) {
+    bool expected   = false;
+    return atomic_compare_exchange_strong(lock, &expected, true);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -164,8 +157,7 @@ typedef struct {
 static
 void
 processRelease(Process* proc) {
-    uint64_t    lockId = nextLock();
-    spinLock(&proc->releaseLock, lockId);
+    spinLock(&proc->releaseLock);
     atomic_fetch_add(&proc->gen, 1);
 
     if( proc->releaseState ) {
@@ -175,7 +167,7 @@ processRelease(Process* proc) {
     BoundedQueue_release(&proc->messageQueue);
 
     // BugFix: always unlock before pusing back to processQueue
-    unlock(&proc->releaseLock, lockId);
+    unlock(&proc->releaseLock);
 
     // push back to the pool
     BoundedQueue_push(&proc->processQueue->procPool, proc);
@@ -291,7 +283,6 @@ SendResult
 Process_sendMessage(PID dest, void* message, MessageAction ma) {
     ProcessQueue*   destPQ      = dest.pq;
     Process*        destProc    = &destPQ->processes[dest.id];
-    uint64_t        lockId      = nextLock();
 
     // We have to handle nasty situations here:
     //
@@ -310,16 +301,14 @@ Process_sendMessage(PID dest, void* message, MessageAction ma) {
     //    send returns SUCCESS, but message never processed (lesser evil)
     //
     // we need a release lock (until another better method is found)
-    if( tryLock(&destProc->releaseLock, lockId) ) {
-        uint64_t rId    = atomic_load(&destProc->releaseLock);
-        assert(rId == lockId);
+    if( tryLock(&destProc->releaseLock) ) {
         if( dest.gen != destProc->gen ) {
-            unlock(&destProc->releaseLock, lockId);
+            unlock(&destProc->releaseLock);
             return ACTOR_IS_DEAD;
         }
 
         if( BoundedQueue_push(&destProc->messageQueue, message) ) {
-            unlock(&destProc->releaseLock, lockId);
+            unlock(&destProc->releaseLock);
             return SEND_SUCCESS;
         } else {
             switch(ma) {
@@ -327,7 +316,7 @@ Process_sendMessage(PID dest, void* message, MessageAction ma) {
             case MA_REMOVE:
                 destProc->messageQueue.elementRelease(message);
             }
-            unlock(&destProc->releaseLock, lockId);
+            unlock(&destProc->releaseLock);
             return SEND_FAIL;
         }
     } else {
@@ -367,7 +356,7 @@ ProcessQueue_spawn(ProcessQueue* dq, ProcessSpawnParameters* parameters) {
         }
 
         Process*    parent  = (Process*)pthread_getspecific(dq->currentProcess);
-        atomic_store(&proc->releaseLock, (uint64_t)-1);
+        atomic_store(&proc->releaseLock, false);
         proc->parent        = parent;
         proc->processQueue  = dq;
         proc->handler       = parameters->handler;
