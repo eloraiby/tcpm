@@ -34,6 +34,14 @@
 //         spinlock
 //
 ////////////////////////////////////////////////////////////////////////////////
+static atomic_uint64_t  _lockId_   = 0;
+
+static inline
+uint32_t
+nextLock() {
+    return atomic_fetch_add(&_lockId_, 1);
+}
+
 static inline
 void
 spinLock(atomic_uint64_t* lock, uint64_t id) {
@@ -154,7 +162,8 @@ typedef struct {
 static
 void
 processRelease(Process* proc) {
-    spinLock(&proc->releaseLock, proc->id);
+    uint64_t    lockId = nextLock();
+    spinLock(&proc->releaseLock, lockId);
     atomic_fetch_add(&proc->gen, 1);
 
     if( proc->releaseState ) {
@@ -165,7 +174,7 @@ processRelease(Process* proc) {
 
     // push back to the pool
     BoundedQueue_push(&proc->processQueue->procPool, proc);
-    spinUnlock(&proc->releaseLock, proc->id);
+    spinUnlock(&proc->releaseLock, lockId);
 }
 
 static
@@ -278,6 +287,7 @@ SendResult
 Process_sendMessage(PID dest, void* message, MessageAction ma) {
     ProcessQueue*   destPQ      = dest.pq;
     Process*        destProc    = &destPQ->processes[dest.id];
+    uint64_t        lockId      = nextLock();
 
     // We have to handle nasty situations here:
     //
@@ -296,14 +306,14 @@ Process_sendMessage(PID dest, void* message, MessageAction ma) {
     //    send returns SUCCESS, but message never processed (lesser evil)
     //
     // we need a release lock (until another better method is found)
-    if( tryLock(&destProc->releaseLock, destProc->id) ) {
+    if( tryLock(&destProc->releaseLock, lockId) ) {
         if( dest.gen != destProc->gen ) {
-            spinUnlock(&destProc->releaseLock, destProc->id);
+            spinUnlock(&destProc->releaseLock, lockId);
             return ACTOR_IS_DEAD;
         }
 
         if( BoundedQueue_push(&destProc->messageQueue, message) ) {
-            spinUnlock(&destProc->releaseLock, destProc->id);
+            spinUnlock(&destProc->releaseLock, lockId);
             return SEND_SUCCESS;
         } else {
             switch(ma) {
@@ -311,7 +321,7 @@ Process_sendMessage(PID dest, void* message, MessageAction ma) {
             case MA_REMOVE:
                 destProc->messageQueue.elementRelease(message);
             }
-            spinUnlock(&destProc->releaseLock, destProc->id);
+            spinUnlock(&destProc->releaseLock, lockId);
             return SEND_FAIL;
         }
     } else {
