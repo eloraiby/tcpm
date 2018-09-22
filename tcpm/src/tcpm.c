@@ -64,8 +64,8 @@ spinUnlock(atomic_uint64_t* lock, uint64_t id) {
 static inline
 bool
 tryLock(atomic_uint64_t* lock, uint64_t id) {
-    uint64_t expected   = id;
-    return atomic_compare_exchange_strong(lock, &expected, (uint64_t)-1);
+    uint64_t expected   = (uint64_t)-1;
+    return atomic_compare_exchange_strong(lock, &expected, id);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
