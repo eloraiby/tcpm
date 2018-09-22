@@ -36,27 +36,28 @@
 ////////////////////////////////////////////////////////////////////////////////
 static inline
 void
-spinLock(atomic_bool* lock) {
-    bool expected   = false;
-    while( !atomic_compare_exchange_weak(lock, &expected, true) ) {
-        expected    = false;
+spinLock(atomic_uint64_t* lock, uint64_t id) {
+    uint64_t expected   = (uint64_t)-1;
+    while( !atomic_compare_exchange_strong(lock, &expected, id) ) {
+        expected    = (uint64_t)-1;
     }
 }
 
 static inline
 void
-spinUnlock(atomic_bool* lock) {
-    bool expected   = true;
-    while( !atomic_compare_exchange_weak(lock, &expected, false) ) {
-        expected    = true;
+spinUnlock(atomic_uint64_t* lock, uint64_t id) {
+    uint64_t expected   = id;
+    assert(id == atomic_load(lock));
+    while( !atomic_compare_exchange_strong(lock, &expected, (uint64_t)-1) ) {
+        expected    = id;
     }
 }
 
 static inline
 bool
-spinTryLock(atomic_bool* lock) {
-    bool expected   = false;
-    return atomic_compare_exchange_weak(lock, &expected, true);
+tryLock(atomic_uint64_t* lock, uint64_t id) {
+    uint64_t expected   = id;
+    return atomic_compare_exchange_strong(lock, &expected, (uint64_t)-1);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -153,7 +154,7 @@ typedef struct {
 static
 void
 processRelease(Process* proc) {
-    spinLock(&proc->releaseLock);
+    spinLock(&proc->releaseLock, proc->id);
     atomic_fetch_add(&proc->gen, 1);
 
     if( proc->releaseState ) {
@@ -164,7 +165,7 @@ processRelease(Process* proc) {
 
     // push back to the pool
     BoundedQueue_push(&proc->processQueue->procPool, proc);
-    spinUnlock(&proc->releaseLock);
+    spinUnlock(&proc->releaseLock, proc->id);
 }
 
 static
@@ -295,14 +296,14 @@ Process_sendMessage(PID dest, void* message, MessageAction ma) {
     //    send returns SUCCESS, but message never processed (lesser evil)
     //
     // we need a release lock (until another better method is found)
-    if( spinTryLock(&destProc->releaseLock) ) {
+    if( tryLock(&destProc->releaseLock, destProc->id) ) {
         if( dest.gen != destProc->gen ) {
-            spinUnlock(&destProc->releaseLock);
+            spinUnlock(&destProc->releaseLock, destProc->id);
             return ACTOR_IS_DEAD;
         }
 
         if( BoundedQueue_push(&destProc->messageQueue, message) ) {
-            spinUnlock(&destProc->releaseLock);
+            spinUnlock(&destProc->releaseLock, destProc->id);
             return SEND_SUCCESS;
         } else {
             switch(ma) {
@@ -310,10 +311,11 @@ Process_sendMessage(PID dest, void* message, MessageAction ma) {
             case MA_REMOVE:
                 destProc->messageQueue.elementRelease(message);
             }
-            spinUnlock(&destProc->releaseLock);
+            spinUnlock(&destProc->releaseLock, destProc->id);
             return SEND_FAIL;
         }
     } else {
+        //fprintf(stderr, ".");
         return SEND_FAIL;
     }
 }
@@ -349,7 +351,7 @@ ProcessQueue_spawn(ProcessQueue* dq, ProcessSpawnParameters* parameters) {
         }
 
         Process*    parent  = (Process*)pthread_getspecific(dq->currentProcess);
-        proc->releaseLock   = false;
+        atomic_store(&proc->releaseLock, (uint64_t)-1);
         proc->parent        = parent;
         proc->processQueue  = dq;
         proc->handler       = parameters->handler;
