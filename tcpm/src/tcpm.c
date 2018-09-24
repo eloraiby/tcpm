@@ -281,6 +281,10 @@ ProcessQueue_release(ProcessQueue* dq) {
         // now free the actors/messages
         BoundedQueue_release(&dq->runQueue);
     }
+    BoundedQueue_release(&dq->procPool);
+    free(dq->threads);
+    free(dq->processes);
+    free(dq);
 }
 
 SendResult

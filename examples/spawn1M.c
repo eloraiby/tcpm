@@ -9,7 +9,7 @@
 
 #include <tcpm.h>
 
-#define MAX_ACTOR_COUNT 1000000
+#define MAX_ACTOR_COUNT 10000
 
 ProcessContinuation
 actorHandler(ProcessQueue* dq, void* state_, void* msg) {
@@ -23,11 +23,11 @@ actorHandler(ProcessQueue* dq, void* state_, void* msg) {
             return PCT_CONTINUE;
         }
     } else {
-/*
-        if( *state % 10000 == 0 ) {
+
+        if( *state % 1000 == 0 ) {
             fprintf(stderr, "-> %u <-\n", *state);
         }
-*/
+
         atomic_fetch_add(state, 1);
         return PCT_STOP;
     }
@@ -78,11 +78,11 @@ main() {
             sp.releaseState     = NULL;
             ac  = ProcessQueue_spawn(dq, &sp);
         }
-/*
+
         if( (a + 1) % 1000 == 0 ) {
             fprintf(stderr, "spawned %u actors\n", a + 1);
         }
-*/
+
 
     }
 
@@ -96,6 +96,5 @@ main() {
 
     ProcessQueue_release(dq);
     fprintf(stderr, "sum: %u - %u actors executed and finished in %.15f seconds\n", sum, MAX_ACTOR_COUNT, diff.tv_sec + (double) diff.tv_nsec / 1000000000L);
-
     return 0;
 }
