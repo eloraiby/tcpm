@@ -53,7 +53,11 @@ unlock(atomic_bool* lock) {
         fprintf(stderr, "current: %u - expected: %u\n", current, expected);
         assert(expected == current);
     }
-    assert(atomic_compare_exchange_strong(lock, &expected, false) == true);
+    bool res = atomic_compare_exchange_strong(lock, &expected, false);
+    if( !res ) {
+        fprintf(stderr, "atomic_compare_exchange_strong failed in unlock! will die!\n");
+        exit(1);
+    }
 }
 
 static inline
@@ -150,7 +154,7 @@ BoundedQueue_pop(BoundedQueue* bq) {
 ////////////////////////////////////////////////////////////////////////////////
 
 typedef struct {
-    uint32_t            threadId;
+    uint32_t         threadId;
     ProcessQueue*    queue;
 } WorkerState;
 
@@ -170,7 +174,7 @@ processRelease(Process* proc) {
     unlock(&proc->releaseLock);
 
     // push back to the pool
-    BoundedQueue_push(&proc->processQueue->procPool, proc);
+    while( BoundedQueue_push(&proc->processQueue->procPool, proc) == false );
 }
 
 static

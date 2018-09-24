@@ -23,11 +23,11 @@ actorHandler(ProcessQueue* dq, void* state_, void* msg) {
             return PCT_CONTINUE;
         }
     } else {
-        /*
+/*
         if( *state % 10000 == 0 ) {
             fprintf(stderr, "-> %u <-\n", *state);
         }
-        */
+*/
         atomic_fetch_add(state, 1);
         return PCT_STOP;
     }
@@ -78,17 +78,17 @@ main() {
             sp.releaseState     = NULL;
             ac  = ProcessQueue_spawn(dq, &sp);
         }
-        /*
-        if( (a + 1) % 10000 == 0 ) {
+/*
+        if( (a + 1) % 1000 == 0 ) {
             fprintf(stderr, "spawned %u actors\n", a + 1);
         }
-        */
+*/
 
     }
 
     while((atomic_load(&sum)) < MAX_ACTOR_COUNT) {
         pthread_yield();
-        //fprintf(stderr, "-->> %u <<--\n", sum);
+        fprintf(stderr, "-->> %u <<--\n", sum);
     }
 
     clock_gettime(CLOCK_MONOTONIC, &end);
