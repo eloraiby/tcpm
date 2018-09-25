@@ -53,8 +53,7 @@ unlock(atomic_bool* lock) {
         fprintf(stderr, "current: %u - expected: %u\n", current, expected);
         assert(expected == current);
     }
-    bool res = atomic_compare_exchange_strong(lock, &expected, false);
-    if( !res ) {
+    if( !atomic_compare_exchange_strong(lock, &expected, false) ) {
         fprintf(stderr, "atomic_compare_exchange_strong failed in unlock! will die!\n");
         exit(1);
     }
