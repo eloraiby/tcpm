@@ -29,6 +29,7 @@
 
 #include "internals.h"
 
+
 ////////////////////////////////////////////////////////////////////////////////
 //
 //         spinlock
@@ -77,7 +78,7 @@ BoundedQueue*
 BoundedQueue_init(BoundedQueue* bq, uint32_t cap, ElementRelease elementRelease) {
     memset(bq, 0, sizeof(BoundedQueue));
     bq->elementRelease  = elementRelease;
-    bq->cap             = cap;
+    bq->cap             = cap < 2 ? 2 : cap;
     bq->elements        = (Element*)calloc(cap, sizeof(Element));
     for( uint32_t i = 0; i < cap; ++i ) {
         atomic_store_explicit(&bq->elements[i].seq, i, memory_order_release);
@@ -145,6 +146,7 @@ BoundedQueue_pop(BoundedQueue* bq) {
     atomic_store_explicit(&el->seq, first + bq->cap, memory_order_release);
     return data;
 }
+
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -256,6 +258,7 @@ ProcessQueue_init(uint32_t procCap, uint32_t threadCount) {
 
     atomic_store(&dq->procCount, 0);
     for( uint32_t threadId = 0; threadId < threadCount; ++threadId ) {
+
         WorkerState*    ws  = (WorkerState*)calloc(1, sizeof(WorkerState));
         ws->threadId    = threadId;
         ws->queue       = dq;

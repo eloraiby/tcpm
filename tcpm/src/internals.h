@@ -30,7 +30,7 @@
 #include <stdatomic.h>
 #include <tcpm.h>
 
-#define _GNU_SOURCE
+
 #include <pthread.h>
 
 typedef _Atomic uint32_t atomic_uint32_t;
