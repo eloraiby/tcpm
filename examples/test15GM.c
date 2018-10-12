@@ -24,6 +24,7 @@
 */
 #include <pthread.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include "../tcpm/src/internals.h"
 
 
@@ -37,6 +38,7 @@ produce(void* _bq) {
             fprintf(stderr, "%lu\n", i);
         }
     }
+    return NULL;
 }
 
 void consume(void* _bq) {

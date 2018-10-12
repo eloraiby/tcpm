@@ -28,14 +28,6 @@
 #include <time.h>
 #include <unistd.h>
 #include <stdatomic.h>
-
-#ifdef __linux__
-#   include <sched.h>
-#   define pthread_yield sched_yield
-#else
-#   define _GNU_SOURCE
-#endif
-
 #include <pthread.h>
 
 #include <tcpm.h>
@@ -50,18 +42,17 @@ actorHandler(ProcessQueue* dq, void* state_, void* msg) {
         PID self    = Process_self(dq);
         if( Process_sendMessage(self, (void*)-1, MA_KEEP) == SEND_SUCCESS ) {
             return PCT_WAIT_MESSAGE;
-        } else {
-            return PCT_CONTINUE;
         }
-    } else {
-/*
-        if( *state % 1000 == 0 ) {
-            fprintf(stderr, "-> %u <-\n", *state);
-        }
-*/
-        atomic_fetch_add(state, 1);
-        return PCT_STOP;
+
+        return PCT_CONTINUE;
     }
+/*
+    if( *state % 1000 == 0 ) {
+        fprintf(stderr, "-> %u <-\n", *state);
+    }
+*/
+    atomic_fetch_add(state, 1);
+    return PCT_STOP;
 }
 
 struct timespec
@@ -89,8 +80,9 @@ timespec_diff(struct timespec end, struct timespec start) {
 
 int
 main() {
+    while(1) {
     fprintf(stderr, "spawning 1,000,000 actors\n");
-    ProcessQueue*  dq  = ProcessQueue_init(1024, 4);
+    ProcessQueue*  dq  = ProcessQueue_init(1024, 8);
 
     struct timespec start, end;
 
@@ -109,16 +101,16 @@ main() {
             sp.releaseState     = NULL;
             ac  = ProcessQueue_spawn(dq, &sp);
         }
-/*
+
         if( (a + 1) % 1000 == 0 ) {
-            fprintf(stderr, "spawned %u actors\n", a + 1);
+            //fprintf(stderr, "spawned %u actors\n", a + 1);
+            usleep(10000);
         }
-*/
 
     }
 
     while((atomic_load(&sum)) < MAX_ACTOR_COUNT) {
-        pthread_yield();
+        usleep(2 * 1000 * 1000);
         fprintf(stderr, "-->> %u <<--\n", sum);
     }
 
@@ -127,5 +119,6 @@ main() {
 
     ProcessQueue_release(dq);
     fprintf(stderr, "sum: %u - %u actors executed and finished in %.15f seconds\n", sum, MAX_ACTOR_COUNT, diff.tv_sec + (double) diff.tv_nsec / 1000000000L);
+    }
     return 0;
 }

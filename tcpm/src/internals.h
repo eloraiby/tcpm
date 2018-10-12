@@ -30,7 +30,7 @@
 #include <stdatomic.h>
 #include <tcpm.h>
 
-
+#define _GNU_SOURCE 1
 #include <pthread.h>
 
 typedef _Atomic uint32_t atomic_uint32_t;
@@ -54,6 +54,7 @@ typedef void            (*ElementRelease)   (void* element);
 typedef struct {
     atomic_uint32_t     first;
     atomic_uint32_t     last;
+    atomic_uint32_t     count;
     uint32_t            cap;
     Element*            elements;
     ElementRelease      elementRelease;
@@ -104,6 +105,9 @@ struct ProcessQueue {
     atomic_uint32_t     procCount;
     pthread_key_t       currentProcess;   // (TLS) per thread, current running process
     Process*            processes;  // Process array
+
+    pthread_mutex_t     lock;
+    pthread_cond_t      cond;
 };
 
 #endif

@@ -26,8 +26,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <memory.h>
+#include <errno.h>
 
 #include "internals.h"
+
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -85,6 +87,7 @@ BoundedQueue_init(BoundedQueue* bq, uint32_t cap, ElementRelease elementRelease)
     }
     atomic_store_explicit(&bq->first, 0, memory_order_release);
     atomic_store_explicit(&bq->last, 0, memory_order_release);
+    atomic_store_explicit(&bq->count, 0, memory_order_release);
     return bq;
 }
 
@@ -119,6 +122,7 @@ BoundedQueue_push(BoundedQueue* bq, void* data) {
     // to spin-lock waiting for it to finish, IF AND ONLY IF they
     // reach the end. Normal case: Producers are ahead
     atomic_store_explicit((atomic_size_t*)&el->data, (size_t)data, memory_order_release);
+    atomic_fetch_add(&bq->count, 1);
     atomic_store_explicit(&el->seq, last + 1, memory_order_release);
     return true;
 }
@@ -143,6 +147,7 @@ BoundedQueue_pop(BoundedQueue* bq) {
     }
 
     data    = (void*)atomic_load_explicit((atomic_size_t*)&el->data, memory_order_acquire);
+    atomic_fetch_sub(&bq->count, 1);
     atomic_store_explicit(&el->seq, first + bq->cap, memory_order_release);
     return data;
 }
@@ -155,8 +160,8 @@ BoundedQueue_pop(BoundedQueue* bq) {
 ////////////////////////////////////////////////////////////////////////////////
 
 typedef struct {
-    uint32_t         threadId;
-    ProcessQueue*    queue;
+    ProcessQueue*       queue;
+    uint32_t            threadId;
 } WorkerState;
 
 static
@@ -205,7 +210,15 @@ threadWorker(void* workerState_) {
     while( atomic_load_explicit((atomic_int*)&dq->state, memory_order_acquire) == DQS_RUNNING ) {
         Process*    proc = (Process*)BoundedQueue_pop(&dq->runQueue);
         if( proc == NULL ) {
-            pthread_yield();
+            if( atomic_load_explicit(&dq->runQueue.count, memory_order_acquire) == 0 ) {
+                pthread_mutex_lock(&dq->lock);
+                while( atomic_load_explicit(&dq->runQueue.count, memory_order_acquire) == 0 && atomic_load_explicit((atomic_int*)&dq->state, memory_order_acquire) == DQS_RUNNING ) {
+                    pthread_cond_wait(&dq->cond, &dq->lock);
+                }
+                pthread_mutex_unlock(&dq->lock);
+            } else {
+                // just idle
+            }
         } else {
             bool        pushActorBack   = true;
             uint32_t    msgCount        = 0;
@@ -223,10 +236,9 @@ threadWorker(void* workerState_) {
                 }
                 ++msgCount;
             }
+
             if( pushActorBack ) {
-                while( BoundedQueue_push(&dq->runQueue, proc) == false ) {
-                    pthread_yield();
-                }
+                while( BoundedQueue_push(&dq->runQueue, proc) == false );
             } else {    // actor died
                 atomic_fetch_sub(&dq->procCount, 1);
             }
@@ -249,6 +261,8 @@ ProcessQueue_init(uint32_t procCap, uint32_t threadCount) {
     dq->processes   = (Process*)calloc(procCap, sizeof(Process));
     dq->state       = DQS_RUNNING;
     BoundedQueue_init(&dq->procPool, procCap, NULL);
+    pthread_mutex_init(&dq->lock, NULL);
+    pthread_cond_init(&dq->cond, NULL);
 
     for( uint32_t p = 0; p < procCap; ++p ) {
         dq->processes[p].id = p;
@@ -256,14 +270,16 @@ ProcessQueue_init(uint32_t procCap, uint32_t threadCount) {
         BoundedQueue_push(&dq->procPool, &dq->processes[p]);
     }
 
-    atomic_store(&dq->procCount, 0);
+    atomic_store_explicit(&dq->procCount, 0, memory_order_release);
     for( uint32_t threadId = 0; threadId < threadCount; ++threadId ) {
-
         WorkerState*    ws  = (WorkerState*)calloc(1, sizeof(WorkerState));
         ws->threadId    = threadId;
         ws->queue       = dq;
-        if( pthread_create(&dq->threads[threadId], NULL, threadWorker, ws) != 0 ) {
-            fprintf(stderr, "Fatal Error: unable to create thread!\n");
+        int res = 0;
+        if( (res = pthread_create(&dq->threads[threadId], NULL, threadWorker, ws)) != 0 ) {
+            fprintf(stderr, "Fatal Error: unable to create thread: %s!\n", res == EPERM ? "EPERM" :
+                                                                           res == EINVAL ? "EINVAL" :
+                                                                                           "");
             exit(1);
         }
     }
@@ -277,6 +293,7 @@ ProcessQueue_release(ProcessQueue* dq) {
         atomic_store_explicit((atomic_int*)&dq->state, DQS_STOPPED, memory_order_release);
         // wait on the threads to exit
         for( uint32_t threadId = 0; threadId < dq->threadCount; ++threadId ) {
+            pthread_cond_broadcast(&dq->cond);
             pthread_join(dq->threads[threadId], NULL);
         }
 
@@ -361,12 +378,10 @@ ProcessQueue_spawn(ProcessQueue* dq, ProcessSpawnParameters* parameters) {
         Process*    proc    = NULL;
 
         // TODO: contention point
-        while( (proc = (Process*)BoundedQueue_pop(&dq->procPool)) == NULL ) {
-            pthread_yield();
-        }
+        while( (proc = (Process*)BoundedQueue_pop(&dq->procPool)) == NULL );
 
         Process*    parent  = (Process*)pthread_getspecific(dq->currentProcess);
-        atomic_store(&proc->releaseLock, false);
+        atomic_store_explicit(&proc->releaseLock, false, memory_order_release);
         proc->parent        = parent;
         proc->processQueue  = dq;
         proc->handler       = parameters->handler;
@@ -379,8 +394,12 @@ ProcessQueue_spawn(ProcessQueue* dq, ProcessSpawnParameters* parameters) {
         // TODO: contention point
         while( BoundedQueue_push(&dq->runQueue, proc) == false ) {
             // other threads are hanging before writing the el->seq, yield
-            pthread_yield();
+            //
         }
+
+        pthread_mutex_lock(&dq->lock);
+        pthread_cond_broadcast(&dq->cond);
+        pthread_mutex_unlock(&dq->lock);
 
         return (PID){ .pq = dq, .id = proc->id, .gen = proc->gen };
 
