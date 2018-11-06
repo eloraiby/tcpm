@@ -210,8 +210,9 @@ threadWorker(void* workerState_) {
     while( atomic_load_explicit((atomic_int*)&dq->state, memory_order_acquire) == DQS_RUNNING ) {
         Process*    proc = (Process*)BoundedQueue_pop(&dq->runQueue);
         if( proc == NULL ) {
-            if( atomic_load_explicit(&dq->runQueue.count, memory_order_acquire) == 0 ) {
+            if( atomic_load_explicit(&dq->runQueue.count, memory_order_acquire) == 0 ) { // no more jobs
                 pthread_mutex_lock(&dq->lock);
+                atomic_store_explicit(&dq->isEmpty, 1, memory_order_release);
                 while( atomic_load_explicit(&dq->runQueue.count, memory_order_acquire) == 0 && atomic_load_explicit((atomic_int*)&dq->state, memory_order_acquire) == DQS_RUNNING ) {
                     pthread_cond_wait(&dq->cond, &dq->lock);
                 }
@@ -397,9 +398,13 @@ ProcessQueue_spawn(ProcessQueue* dq, ProcessSpawnParameters* parameters) {
             //
         }
 
-        pthread_mutex_lock(&dq->lock);
-        pthread_cond_broadcast(&dq->cond);
-        pthread_mutex_unlock(&dq->lock);
+        uint32_t    isEmpty = atomic_load_explicit(&dq->isEmpty, memory_order_acquire);
+        if( isEmpty ) {
+            pthread_mutex_lock(&dq->lock);
+            atomic_store_explicit(&dq->isEmpty, 0, memory_order_release);
+            pthread_cond_broadcast(&dq->cond);
+            pthread_mutex_unlock(&dq->lock);
+        }
 
         return (PID){ .pq = dq, .id = proc->id, .gen = proc->gen };
 

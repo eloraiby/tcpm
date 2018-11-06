@@ -104,13 +104,13 @@ main() {
 
         if( (a + 1) % 1000 == 0 ) {
             //fprintf(stderr, "spawned %u actors\n", a + 1);
-            usleep(10000);
+            //usleep(10000);
         }
 
     }
 
     while((atomic_load(&sum)) < MAX_ACTOR_COUNT) {
-        usleep(2 * 1000 * 1000);
+        usleep(1000);
         fprintf(stderr, "-->> %u <<--\n", sum);
     }
 
