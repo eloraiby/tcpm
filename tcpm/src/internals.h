@@ -97,7 +97,6 @@ typedef enum {
 
 struct ProcessQueue {
     BoundedQueue        runQueue;   // running process queue
-    atomic_uint32_t     isEmpty;
     BoundedQueue        procPool;   // process pool
     uint32_t            threadCount;
     pthread_t*          threads;

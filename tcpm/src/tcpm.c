@@ -22,11 +22,17 @@
     OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
     SOFTWARE.
 */
+#define _GNU_SOURCE
+
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <memory.h>
 #include <errno.h>
+
+#include <sched.h>
+#include <unistd.h>
+#include <sys/sysinfo.h>
 
 #include "internals.h"
 
@@ -204,21 +210,20 @@ handleProcess(ProcessQueue* dq, Process* proc, void* msg) {
 static
 void*
 threadWorker(void* workerState_) {
-    WorkerState*     workerState = (WorkerState*)workerState_;
-    ProcessQueue*    dq          = workerState->queue;
+    WorkerState*    workerState = (WorkerState*)workerState_;
+    ProcessQueue*   dq          = workerState->queue;
 
     while( atomic_load_explicit((atomic_int*)&dq->state, memory_order_acquire) == DQS_RUNNING ) {
         Process*    proc = (Process*)BoundedQueue_pop(&dq->runQueue);
         if( proc == NULL ) {
-            if( atomic_load_explicit(&dq->runQueue.count, memory_order_acquire) == 0 ) { // no more jobs
+            if( atomic_load_explicit(&dq->runQueue.count, memory_order_acquire) == 0 && atomic_load_explicit((atomic_int*)&dq->state, memory_order_acquire) == DQS_RUNNING ) {
+                // no more jobs and still running
                 pthread_mutex_lock(&dq->lock);
-                atomic_store_explicit(&dq->isEmpty, 1, memory_order_release);
                 while( atomic_load_explicit(&dq->runQueue.count, memory_order_acquire) == 0 && atomic_load_explicit((atomic_int*)&dq->state, memory_order_acquire) == DQS_RUNNING ) {
+                    //fprintf(stderr, "waiting... %d\n", atomic_load_explicit(&dq->runQueue.count, memory_order_acquire));
                     pthread_cond_wait(&dq->cond, &dq->lock);
                 }
                 pthread_mutex_unlock(&dq->lock);
-            } else {
-                // just idle
             }
         } else {
             bool        pushActorBack   = true;
@@ -272,12 +277,19 @@ ProcessQueue_init(uint32_t procCap, uint32_t threadCount) {
     }
 
     atomic_store_explicit(&dq->procCount, 0, memory_order_release);
+    int onlineProcCount = sysconf(_SC_NPROCESSORS_ONLN);
     for( uint32_t threadId = 0; threadId < threadCount; ++threadId ) {
         WorkerState*    ws  = (WorkerState*)calloc(1, sizeof(WorkerState));
         ws->threadId    = threadId;
         ws->queue       = dq;
+        cpu_set_t       cpuset;
+        pthread_attr_t  attr;
+        pthread_attr_init(&attr);
+        CPU_ZERO(&cpuset);
+        CPU_SET((int)threadId % onlineProcCount, &cpuset);
+        pthread_attr_setaffinity_np(&attr, sizeof(cpu_set_t), &cpuset);
         int res = 0;
-        if( (res = pthread_create(&dq->threads[threadId], NULL, threadWorker, ws)) != 0 ) {
+        if( (res = pthread_create(&dq->threads[threadId], &attr, threadWorker, ws)) != 0 ) {
             fprintf(stderr, "Fatal Error: unable to create thread: %s!\n", res == EPERM ? "EPERM" :
                                                                            res == EINVAL ? "EINVAL" :
                                                                                            "");
@@ -294,7 +306,9 @@ ProcessQueue_release(ProcessQueue* dq) {
         atomic_store_explicit((atomic_int*)&dq->state, DQS_STOPPED, memory_order_release);
         // wait on the threads to exit
         for( uint32_t threadId = 0; threadId < dq->threadCount; ++threadId ) {
+            pthread_mutex_lock(&dq->lock);
             pthread_cond_broadcast(&dq->cond);
+            pthread_mutex_unlock(&dq->lock);
             pthread_join(dq->threads[threadId], NULL);
         }
 
@@ -392,16 +406,14 @@ ProcessQueue_spawn(ProcessQueue* dq, ProcessSpawnParameters* parameters) {
         proc->maxMessagePerCycle   = (parameters->messageCap > parameters->maxMessagePerCycle) ? parameters->maxMessagePerCycle :  parameters->messageCap;
         BoundedQueue_init(&proc->messageQueue, parameters->messageCap, parameters->messageRelease);
 
+        uint32_t wasEmpty = atomic_load_explicit(&dq->runQueue.count, memory_order_acquire) == 0;
         // TODO: contention point
         while( BoundedQueue_push(&dq->runQueue, proc) == false ) {
             // other threads are hanging before writing the el->seq, yield
             //
         }
 
-        uint32_t    isEmpty = atomic_load_explicit(&dq->isEmpty, memory_order_acquire);
-        if( isEmpty ) {
-            pthread_mutex_lock(&dq->lock);
-            atomic_store_explicit(&dq->isEmpty, 0, memory_order_release);
+        if( pthread_mutex_trylock(&dq->lock) == 0 ) {
             pthread_cond_broadcast(&dq->cond);
             pthread_mutex_unlock(&dq->lock);
         }
